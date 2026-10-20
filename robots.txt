@@ -1,0 +1,6 @@
+# Allow everything. This is a public portfolio - being indexed is the point.
+User-agent: *
+Allow: /
+
+# Change this if you add a custom domain later
+Sitemap: https://KrIShnA-768.github.io/sitemap.xml

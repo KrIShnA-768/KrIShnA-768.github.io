@@ -1,0 +1,78 @@
+# Deploy the portfolio to GitHub Pages on every push to main.
+#
+# There is no build step — the site is plain HTML, so this uploads the files as they are.
+# That is deliberate: nothing to break, nothing to keep up to date, instant builds.
+#
+# One-time setup in the repository: Settings > Pages > Build and deployment >
+# Source: "GitHub Actions". Without that, this workflow runs but publishes nothing.
+#
+# Note the terraform/ directory is excluded from the upload — it provisions the AWS
+# migration later and must not be served as part of the website.
+
+name: deploy-pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          cp index.html 404.html robots.txt sitemap.xml _site/
+          # resume.pdf is optional — do not fail the build before you have added it
+          if [ -f resume.pdf ]; then cp resume.pdf _site/; fi
+          # CNAME only matters once you own a domain
+          if [ -f CNAME ]; then cp CNAME _site/; fi
+          ls -la _site
+
+      # Catch the mistake that actually happens: shipping the page with placeholders
+      # still in it. Fails the deploy rather than publishing "you@example.com" to the web.
+      - name: Check for unreplaced placeholders
+        run: |
+          fail=0
+          for pattern in "you@example.com" "example.com/"; do
+            if grep -rqF "$pattern" _site/index.html; then
+              echo "::error::index.html still contains placeholder: $pattern"
+              fail=1
+            fi
+          done
+          if [ "$fail" = "1" ]; then
+            echo
+            echo "Replace the placeholders in index.html, or delete this step if you"
+            echo "are deliberately publishing a draft."
+            exit 1
+          fi
+          echo "No placeholders found."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
